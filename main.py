@@ -4,7 +4,12 @@ import pygame_gui
 import random
 import os
 import time
+import socket
 import json
+import spotipy
+import requests
+from io import BytesIO
+from spotipy.oauth2 import SpotifyOAuth
 from APIs import get_coordinates, fetch_weather_data, process_weather
 
 pygame.init()
@@ -18,6 +23,24 @@ CLOCK = pygame.time.Clock()
 MANAGER = pygame_gui.UIManager((WIDTH, HEIGHT))
 
 theme_color = None
+
+SPOTIFY_CLIENT_ID = "your_client_id"
+SPOTIFY_CLIENT_SECRET = "your_client_secret"
+SPOTIFY_REDIRECT_URI = "http://localhost:8888/callback"
+
+# Initialize Spotify API
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET,
+    redirect_uri=SPOTIFY_REDIRECT_URI,
+    scope="user-read-playback-state user-modify-playback-state streaming"
+))
+
+def display_album_cover(album_cover_url, position=(50, 50)):
+    response = requests.get(album_cover_url)
+    album_cover_image = pygame.image.load(BytesIO(response.content))
+    album_cover_image = pygame.transform.scale(album_cover_image, (150, 150))
+    SCREEN.blit(album_cover_image, position)
 
 # Helper function for resizing
 def resize_window(new_width, new_height):
@@ -46,6 +69,19 @@ music_muted = False
 current_song_index = 0
 music_files = None
 
+def play_spotify_song():
+    try:
+        current_track = sp.current_user_playing_track()
+        if current_track:
+            track_name = current_track['item']['name']
+            artist_name = current_track['item']['artists'][0]['name']
+            album_cover_url = current_track['item']['album']['images'][0]['url']
+            return track_name, artist_name, album_cover_url
+        else:
+            return None, None, None
+    except:
+        return None, None, None
+
 def initialize_music(folder):
     global music_files
     folder_path = resource_path(folder)
@@ -61,9 +97,22 @@ def play_next_song():
         if current_song_index >= len(music_files):
             current_song_index = 0
 
+def is_connected():
+    try:
+        socket.create_connection(("www.google.com", 80))
+        return True
+    except OSError:
+        return False
+
 def handle_music():
-    if not pygame.mixer.music.get_busy():
-        play_next_song()
+    if is_connected():
+        track_name, artist_name, album_cover_url = play_spotify_song()
+        if track_name:
+            display_album_cover(album_cover_url)
+        else:
+            play_next_song()  # Fallback to local music if Spotify fails
+    else:
+        play_next_song()  # Offline fallback
 
 def get_time():
     current_time = time.localtime()
